@@ -128,3 +128,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# custom ignore
+tvm_benchmark/models
+checkpoints/
+model_zoo/
+
+

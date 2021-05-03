@@ -108,10 +108,10 @@ def conv2d_nhwc_python(a_np, w_np, w_layout, stride, padding):
     return bt.transpose((0, 2, 3, 1))
 
 
-def save_weights(save_path, kernel_dtype, num_stages, units):
+def save_weights(save_path, kernel_dtype, num_stages, units, isRes18):
     params = {}
 
-    int8_ops_list = ['module.quant_init_convbn.weight_integer', 'module.quant_output.weight_integer']
+    int8_ops_list = ['module.quant_init_convbn.weight_integer', 'module.quant_init_block_convbn.weight_integer', 'module.quant_output.weight_integer']
 
     for (key, tensor) in weight_integer.items():
         print(key)
@@ -133,21 +133,40 @@ def save_weights(save_path, kernel_dtype, num_stages, units):
 
 
     renamed_params = {}
-    renamed_params['conv0_weight'] = params['module.quant_init_convbn.weight_integer']
+    if not isRes18:
+        renamed_params['conv0_weight'] = params['module.quant_init_convbn.weight_integer']
+    else:
+        renamed_params['conv0_weight'] = params['module.quant_init_block_convbn.weight_integer']
+    
+    if not isRes18:
+        for i in range(num_stages):
+            for j in range(units[i]):
+                for k in range(3):
+                    old_name = "module.stage%d.unit%d.quant_convbn%d.weight_integer" % (i + 1, j + 1, k + 1)
+                    new_name = "stage%d_unit%d_qconv%d_weight" % (i + 1, j + 1, k + 1)
+                    assert old_name in params.keys(), "%s is not in the params" % old_name
+                    renamed_params[new_name] = params[old_name]
+    
+                if j == 0:
+                    old_name = "module.stage%d.unit%d.quant_identity_convbn.weight_integer" % (i + 1, j + 1)
+                    new_name = "stage%d_unit%d_qsc_weight" % (i + 1, j + 1)
+                    assert old_name in params.keys(), "%s is not in the params" % old_name
+                    renamed_params[new_name] = params[old_name]
 
-    for i in range(num_stages):
-        for j in range(units[i]):
-            for k in range(3):
-                old_name = "module.stage%d.unit%d.quant_convbn%d.weight_integer" % (i + 1, j + 1, k + 1)
-                new_name = "stage%d_unit%d_qconv%d_weight" % (i + 1, j + 1, k + 1)
-                assert old_name in params.keys(), "%s is not in the params" % old_name
-                renamed_params[new_name] = params[old_name]
-
-            if j == 0:
-                old_name = "module.stage%d.unit%d.quant_identity_convbn.weight_integer" % (i + 1, j + 1)
-                new_name = "stage%d_unit%d_qsc_weight" % (i + 1, j + 1)
-                assert old_name in params.keys(), "%s is not in the params" % old_name
-                renamed_params[new_name] = params[old_name]
+    else:
+        for i in range(num_stages):
+            for j in range(units[i]):
+                for k in range(2):
+                    old_name = "module.stage%d.unit%d.quant_convbn%d.weight_integer" % (i + 1, j + 1, k + 1)
+                    new_name = "stage%d_unit%d_qconv%d_weight" % (i + 1, j + 1, k + 1)
+                    assert old_name in params.keys(), "%s is not in the params" % old_name
+                    renamed_params[new_name] = params[old_name]
+    
+                if j == 0 and i != 0:
+                    old_name = "module.stage%d.unit%d.quant_identity_convbn.weight_integer" % (i + 1, j + 1)
+                    new_name = "stage%d_unit%d_qsc_weight" % (i + 1, j + 1)
+                    assert old_name in params.keys(), "%s is not in the params" % old_name
+                    renamed_params[new_name] = params[old_name]
 
     renamed_params['fc_weight'] = params['module.quant_output.weight_integer']
     np.save(os.path.join(save_path, "weights.npy"), renamed_params)
@@ -202,7 +221,7 @@ def load_qconfig_from_bit_config(num_stages, units, bit_config, bottleneck):
 # Save scales
 # -----------------
 
-def load_qconfig(data_dtype, kernel_dtype, num_stages, units, model_load=False, scaling_factors=None, file_name=None):
+def load_qconfig(data_dtype, kernel_dtype, num_stages, units, model_load=False, scaling_factors=None, file_name=None, isRes18=False):
 
     if not model_load:
         model = torch.load(file_name)
@@ -276,33 +295,50 @@ def load_qconfig(data_dtype, kernel_dtype, num_stages, units, model_load=False, 
             QConfig(input_dtype=data_dtype, input_scale=input_scale, kernel_dtype=kernel_dtype, kernel_scale=kernel_scale, output_scale=output_scale)
 
     def load_add_config(stage, unit, dim_match):
-        lhs_output_scale = QuantizeContext.qconfig_dict["stage%d_unit%d_qconfig3" % (stage, unit)].output_scale
-        if dim_match:
-            rhs_output_scale = QuantizeContext.qconfig_dict["stage%d_unit%d_qconfig1" % (stage, unit)].from_scale
-        else:
-            rhs_output_scale = QuantizeContext.qconfig_dict["stage%d_unit%d_qconfig_sc" % (stage, unit)].output_scale
+        #lhs_output_scale = QuantizeContext.qconfig_dict["stage%d_unit%d_qconfig3" % (stage, unit)].output_scale
+        #if dim_match:
+            #rhs_output_scale = QuantizeContext.qconfig_dict["stage%d_unit%d_qconfig1" % (stage, unit)].from_scale
+        #else:
+            #rhs_output_scale = QuantizeContext.qconfig_dict["stage%d_unit%d_qconfig_sc" % (stage, unit)].output_scale
 
         # output_scale = np.minimum(lhs_output_scale, rhs_output_scale)
         output_scale = params["module.stage%d.unit%d.quant_act_int32.act_scaling_factor" % (stage, unit)]
         QuantizeContext.qconfig_dict["stage%d_unit%d_qconfig_add" % (stage, unit)] = QConfig(output_scale=output_scale)
 
     conv0_input_scale = params["module.quant_input.act_scaling_factor"]
-    conv0_kernel_scale = params["module.quant_init_convbn.convbn_scaling_factor"]
+    if not isRes18:
+        conv0_kernel_scale = params["module.quant_init_convbn.convbn_scaling_factor"]
+    else:
+        conv0_kernel_scale = params["module.quant_init_block_convbn.convbn_scaling_factor"]
+
     # conv0_output_scale = conv0_input_scale * conv0_kernel_scale
     conv0_output_scale = params["module.quant_act_int32.act_scaling_factor"]
     QuantizeContext.qconfig_dict["conv0_qconfig"] = \
         QConfig(from_scale=1.0, input_dtype='int8', input_scale=conv0_input_scale, kernel_dtype='int8', kernel_scale=conv0_kernel_scale, output_scale=conv0_output_scale)
 
-    for i in range(num_stages):
-        for j in range(units[i]):
-            for k in range(3):
-                load_conv_config(i+1,j+1,k+1)
+    if not isRes18:
+        for i in range(num_stages):
+            for j in range(units[i]):
+                for k in range(3):
+                    load_conv_config(i+1,j+1,k+1)
+    
+                if j == 0:
+                    load_sc_config(i+1, j+1)
+                    load_add_config(i+1, j+1, False)
+                else:
+                    load_add_config(i+1, j+1, True)
 
-            if j == 0:
-                load_sc_config(i+1, j+1)
-                load_add_config(i+1, j+1, False)
-            else:
-                load_add_config(i+1, j+1, True)
+    else:
+        for i in range(num_stages):
+            for j in range(units[i]):
+                for k in range(2):
+                    load_conv_config(i+1,j+1,k+1)
+    
+                if j == 0 and i != 0:
+                    load_sc_config(i+1, j+1)
+                    load_add_config(i+1, j+1, False)
+                else:
+                    load_add_config(i+1, j+1, True)
 
     fc_from_scale = QuantizeContext.qconfig_dict["stage%d_unit%d_qconfig_add" % (num_stages, units[num_stages-1])].output_scale
     fc_input_scale = params["module.quant_act_output.act_scaling_factor"]
@@ -331,7 +367,7 @@ def save_input(model_dir, save_path):
 ###############################################################################
 # Save scaled bias
 # -----------------
-def save_bias(save_path, num_stages, units):
+def save_bias(save_path, num_stages, units, isRes18):
     params = {}
     for (key, tensor) in scaled_bias.items():
         params[key] = tensor.cpu().numpy().reshape(1, 1, 1, -1)
@@ -339,25 +375,49 @@ def save_bias(save_path, num_stages, units):
         # print(tensor)
 
     renamed_params = {}
-    renamed_params['conv0_bias'] = (params['module.quant_init_convbn.bias_integer']).astype("int32")
+    if not isRes18:
+        renamed_params['conv0_bias'] = (params['module.quant_init_convbn.bias_integer']).astype("int32")
+    else:
+        renamed_params['conv0_bias'] = (params['module.quant_init_block_convbn.bias_integer']).astype("int32")
 
-    for i in range(num_stages):
-        for j in range(units[i]):
-            for k in range(3):
-                old_name = "module.stage%d.unit%d.quant_convbn%d.bias_integer" % (i + 1, j + 1, k + 1)
-                new_name = "stage%d_unit%d_qconv%d_bias" % (i + 1, j + 1, k + 1)
+    if not isRes18:
+        for i in range(num_stages):
+            for j in range(units[i]):
+                for k in range(3):
+                    old_name = "module.stage%d.unit%d.quant_convbn%d.bias_integer" % (i + 1, j + 1, k + 1)
+                    new_name = "stage%d_unit%d_qconv%d_bias" % (i + 1, j + 1, k + 1)
+    
+                    assert old_name in params.keys(), "%s is not in the params" % old_name
+    
+                    renamed_params[new_name] = (params[old_name]).astype("int32")
+    
+                if j == 0:
+                    old_name = "module.stage%d.unit%d.quant_identity_convbn.bias_integer" % (i + 1, j + 1)
+                    new_name = "stage%d_unit%d_qsc_bias" % (i + 1, j + 1)
+    
+                    assert old_name in params.keys(), "%s is not in the params" % old_name
+    
+                    renamed_params[new_name] = (params[old_name]).astype("int32")
 
-                assert old_name in params.keys(), "%s is not in the params" % old_name
 
-                renamed_params[new_name] = (params[old_name]).astype("int32")
-
-            if j == 0:
-                old_name = "module.stage%d.unit%d.quant_identity_convbn.bias_integer" % (i + 1, j + 1)
-                new_name = "stage%d_unit%d_qsc_bias" % (i + 1, j + 1)
-
-                assert old_name in params.keys(), "%s is not in the params" % old_name
-
-                renamed_params[new_name] = (params[old_name]).astype("int32")
+    else:
+        for i in range(num_stages):
+            for j in range(units[i]):
+                for k in range(2):
+                    old_name = "module.stage%d.unit%d.quant_convbn%d.bias_integer" % (i + 1, j + 1, k + 1)
+                    new_name = "stage%d_unit%d_qconv%d_bias" % (i + 1, j + 1, k + 1)
+    
+                    assert old_name in params.keys(), "%s is not in the params" % old_name
+    
+                    renamed_params[new_name] = (params[old_name]).astype("int32")
+    
+                if j == 0 and i != 0:
+                    old_name = "module.stage%d.unit%d.quant_identity_convbn.bias_integer" % (i + 1, j + 1)
+                    new_name = "stage%d_unit%d_qsc_bias" % (i + 1, j + 1)
+    
+                    assert old_name in params.keys(), "%s is not in the params" % old_name
+    
+                    renamed_params[new_name] = (params[old_name]).astype("int32")
 
     renamed_params['fc_bias'] = (params['module.quant_output.bias_integer']).astype("int32")
     renamed_params['fc_bias'] = renamed_params['fc_bias'][0, 0, 0, :]
@@ -445,6 +505,9 @@ if __name__ == "__main__":
     parser.add_argument('--dtype', default='int8',
                         help='Only support uniform data type here (int8, int4)')
 
+    parser.add_argument('--arch', default='resnet50',
+                        help='resnet architecture')
+
     args = parser.parse_args()
 
     if args.save_dir is None:
@@ -468,14 +531,21 @@ if __name__ == "__main__":
     if save_path != model_dir:
         copy_command = "cp %s %s" % (file_name, save_path)
         os.system(copy_command)
-    
-    
-    if args.cifar10:
-        num_stages = 3
-        units = [3, 4, 6]
+
+    if args.arch == 'resnet50':
+        isRes18 = False
+        if args.cifar10:
+            num_stages = 3
+            units = [3, 4, 6]
+        else:
+            num_stages = 4
+            units = [3, 4, 6, 3]
+    elif args.arch == 'resnet18':
+        isRes18 = True
+        num_stages = 4
+        units = [2, 2, 2, 2]
     else:
-        num_stages = 4       
-        units = [3, 4, 6, 3]
+        assert 0
 
 
     model = torch.load(file_name)
@@ -498,6 +568,6 @@ if __name__ == "__main__":
         save_unit_input(model_dir, save_path, num_stages, units)
 
     if not args.onlyfeaturemap:
-        save_weights(save_path, kernel_dtype, num_stages, units)
-        load_qconfig(data_dtype, kernel_dtype, num_stages, units, model_load=True, scaling_factors=scaling_factors)
-        save_bias(save_path, num_stages, units)
+        save_weights(save_path, kernel_dtype, num_stages, units, isRes18)
+        load_qconfig(data_dtype, kernel_dtype, num_stages, units, model_load=True, scaling_factors=scaling_factors, isRes18=isRes18)
+        save_bias(save_path, num_stages, units, isRes18)

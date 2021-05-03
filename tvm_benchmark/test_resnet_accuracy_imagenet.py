@@ -13,7 +13,7 @@ import numpy as np
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
-import hawq_utils_resnet50
+import hawq_utils_resnet
 sys.path.append('..')
 import mixed_precision_models.quantized_resnet_v1 as quantized_resnet_v1
 from mixed_precision_models.layers import QConfig, QuantizeContext
@@ -29,12 +29,9 @@ def get_params(params_dir, model_type):
         print("Model type not supported")
         sys.exit(1)
 
-    num_stages = 4
-    units = [3, 4, 6, 3]
-
     weights = np.load(os.path.join(params_dir, "weights.npy"), allow_pickle=True)[()]
     bias = np.load(os.path.join(params_dir, "bias.npy"), allow_pickle=True)[()]
-    hawq_utils_resnet50.load_qconfig(data_dtype, kernel_dtype, num_stages=num_stages, units=units, file_name=os.path.join(params_dir, "quantized_checkpoint.pth.tar"))
+    hawq_utils_resnet.load_qconfig(data_dtype, kernel_dtype, num_stages=num_stages, units=units, file_name=os.path.join(params_dir, "quantized_checkpoint.pth.tar"), isRes18=isRes18)
 
     params = {**weights, **bias}
     # params = {**weights}
@@ -124,6 +121,8 @@ def validate(val_dir, params_dir, batch_size, num_layers, model_type, log_filena
             module.run()
 
             tvm_output = module.get_output(0)
+            #for i in range(len(target)):
+                #print(f"label:{target[i]}, output:{torch.argmax(torch.from_numpy(tvm_output.asnumpy()[i]))}, prob:{torch.max(torch.from_numpy(tvm_output.asnumpy()[i]))}")
 
             acc_top1.update([mx.nd.array(target.cpu().numpy())], [mx.nd.array(tvm_output.asnumpy())])
             acc_top5.update([mx.nd.array(target.cpu().numpy())], [mx.nd.array(tvm_output.asnumpy())])
@@ -146,6 +145,9 @@ if __name__ == '__main__':
     parser.add_argument('--val-dir', required=True, default=None,
                         help='Validation dataset directory')
 
+    parser.add_argument('--arch', default='resnet50',
+                        help='resnet architecture')
+
     args = parser.parse_args()
 
     batch_size = 8
@@ -153,7 +155,19 @@ if __name__ == '__main__':
     val_dir = args.val_dir
     params_dir = args.model_dir
 
-    num_layers = 50
+    if args.arch == 'resnet50':
+        isRes18 = False
+        num_layers = 50
+        num_stages = 4
+        units = [3, 4, 6, 3]
+    elif args.arch == 'resnet18':
+        isRes18 = True
+        num_layers = 18
+        num_stages = 4
+        units = [2, 2, 2, 2]
+    else:
+        assert 0
+
     model_type = "int8"
 
     log_filename = "./logs/resnet%d_%s_%s_batch_%d.log" % (num_layers, "NHWC", model_type, batch_size)

@@ -20,7 +20,7 @@ import re
 import mixed_precision_models.quantized_resnet_v1 as quantized_resnet_v1
 from mixed_precision_models.layers import QConfig, QuantizeContext
 
-import hawq_utils_resnet50
+import hawq_utils_resnet
 
 import logging
 logging.basicConfig(level=logging.CRITICAL)
@@ -40,6 +40,9 @@ parser.add_argument('--rounding', default='TONEAREST',
 parser.add_argument('--num-classes', type=int, default=1000,
                     help='Total number of classes')
 
+parser.add_argument('--arch', default='resnet50',
+                    help='resnet architecture')
+
 args = parser.parse_args()
 
 ###############################################################################
@@ -48,22 +51,32 @@ args = parser.parse_args()
 
 TARGET_NAME = 'cuda'
 CTX = tvm.context(TARGET_NAME, 0)
+#CTX = tvm.gpu(0)
 
 ###############################################################################
 # Load params
 # -----------------
 
-if args.num_classes == 10: # Cifar 10
-    num_stages = 3
-    units = [3, 4, 6]
-    print("Use Cifar 10")
-else:
+if args.arch == 'resnet50':
+    isRes18 = False
+    if args.num_classes == 10: # Cifar 10
+        num_stages = 3
+        units = [3, 4, 6]
+        print("Use Cifar 10")
+    else:
+        num_stages = 4
+        units = [3, 4, 6, 3]
+elif args.arch == 'resnet18':
+    isRes18 = True
     num_stages = 4
-    units = [3, 4, 6, 3]
+    units = [2, 2, 2, 2]
+else:
+    assert 0
 
 weights = np.load(os.path.join(args.model_dir, "weights.npy"), allow_pickle=True)[()]
 bias = np.load(os.path.join(args.model_dir, "bias.npy"), allow_pickle=True)[()]
-hawq_utils_resnet50.load_qconfig("uint4", "int4", num_stages, units, file_name=os.path.join(args.model_dir, "quantized_checkpoint.pth.tar"))
+hawq_utils_resnet.load_qconfig("uint4", "int4", num_stages, units, file_name=os.path.join(args.model_dir, "quantized_checkpoint.pth.tar"), isRes18=isRes18)
+#hawq_utils_resnet50.load_qconfig("int8", "int8", num_stages, units, file_name=os.path.join(args.model_dir, "quantized_checkpoint.pth.tar"))
 
 input_image = np.load(os.path.join(args.model_dir, "input_image_batch_1.npy"))
 input_image = input_image / QuantizeContext.qconfig_dict["conv0_qconfig"].input_scale
@@ -85,7 +98,7 @@ shape = list(input_image.shape)
 image_shape = (shape[3], shape[1], shape[2])
 input_dtype = 'int8'
 model_type = "int4"
-num_layers = 50
+num_layers = 18 if isRes18 else 50
 data_layout = "NHWC"
 kernel_layout = "HWOI"
 
@@ -127,6 +140,7 @@ with autotvm.apply_history_best(log_filename):
 
         if args.debug_unit is not None:
             m = tvm.contrib.graph_runtime.create(graph, lib, CTX)
+            #m = tvm.contrib.graph_executor.create(graph, lib, CTX)
 
             # Set the network parameters and inputs
             m.set_input(**params)
@@ -169,7 +183,7 @@ with autotvm.apply_history_best(log_filename):
                 np.save(os.path.join(args.model_dir, "tvm_result/%s_output_int32.npy" % unit_str), actual_result[0])
                 golden_result = np.load(os.path.join(args.model_dir, "pytorch_result/%s_output_float32.npy" % unit_str))
             elif args.debug_unit == unit_str + "_input":
-                actual_result = hawq_utils_resnet50.unpack_int4_to_int32(out)
+                actual_result = hawq_utils_resnet.unpack_int4_to_int32(out)
                 np.save(os.path.join(args.model_dir, "tvm_result/%s_input_int4.npy" % unit_str), actual_result[0])
                 golden_result = np.load(os.path.join(args.model_dir, "pytorch_result/%s_input_int4.npy" % unit_str)).astype("int32")
             else:
@@ -181,6 +195,7 @@ with autotvm.apply_history_best(log_filename):
             print(args.debug_unit + " is 100% matched !")
         else:
             module = tvm.contrib.graph_runtime.create(graph, lib, ctx=CTX)
+            #module = tvm.contrib.graph_executor.create(graph, lib, ctx=CTX)
             module.set_input(**params)
             module.set_input('data', input_data)
 
