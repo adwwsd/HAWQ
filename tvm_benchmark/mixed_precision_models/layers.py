@@ -1,7 +1,7 @@
 """Simple Layer DSL wrapper to ease creation of neural nets."""
 from tvm import relay
 from collections import namedtuple
-from topi.util import get_const_tuple
+#from topi.util import get_const_tuple
 
 import numpy as np
 

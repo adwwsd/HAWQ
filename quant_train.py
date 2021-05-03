@@ -250,6 +250,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 if 'num_batches_tracked' in key: continue
                 if 'weight_integer' in key: continue
                 if 'min' in key or 'max' in key: continue
+                #print (f'i:{i}, itemlen:{len(checkpoint.items())}')
                 modified_key = model_key_list[i]
                 modified_dict[modified_key] = value
                 i += 1
