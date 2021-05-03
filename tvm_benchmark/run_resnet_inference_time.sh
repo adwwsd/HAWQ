@@ -18,7 +18,8 @@ run_inference() {
 	python test_resnet_inference_time.py --bit-config $bit_config --num-layers $num_layers --manual-code
 }
 
-
+run_inference "bit_config_resnet18_uniform8"        18
+run_inference "bit_config_resnet18_uniform4"        18
 run_inference "bit_config_resnet18_bops_0.75"       18
 run_inference "bit_config_resnet18_bops_0.5"        18
 run_inference "bit_config_resnet18_bops_0.25"       18
@@ -29,6 +30,8 @@ run_inference "bit_config_resnet18_modelsize_0.75"  18
 run_inference "bit_config_resnet18_modelsize_0.5"   18
 run_inference "bit_config_resnet18_modelsize_0.25"  18
 
+run_inference "bit_config_resnet50_uniform8"        50
+run_inference "bit_config_resnet50_uniform4"        50
 run_inference "bit_config_resnet50_bops_0.75"       50 
 run_inference "bit_config_resnet50_bops_0.5"        50 
 run_inference "bit_config_resnet50_bops_0.25"       50 
@@ -38,7 +41,3 @@ run_inference "bit_config_resnet50_latency_0.25"    50
 run_inference "bit_config_resnet50_modelsize_0.75"  50 
 run_inference "bit_config_resnet50_modelsize_0.5"   50 
 run_inference "bit_config_resnet50_modelsize_0.25"  50 
-
-
-
-
