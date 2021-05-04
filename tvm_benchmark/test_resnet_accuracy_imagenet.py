@@ -170,9 +170,11 @@ if __name__ == '__main__':
 
     model_type = "int8"
 
-    log_filename = "./logs/resnet%d_%s_%s_batch_%d.log" % (num_layers, "NHWC", model_type, batch_size)
+    #log_filename = "./logs/resnet%d_%s_%s_batch_%d.log" % (num_layers, "NHWC", model_type, batch_size)
+    log_filename = f"./{params_dir}/resnet{num_layers}_NHWC_mixed_batch_{batch_size}.log"
     if not os.path.exists(log_filename):
         log_filename = None
+        print("No log file found.")
     else:
         print("Apply tuning log " + log_filename)
 

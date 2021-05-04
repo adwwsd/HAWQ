@@ -111,6 +111,7 @@ elif num_layers == 50:
 
 if args.bit_config is not None:
     import bit_config
+    bit_config_string = args.bit_config
     hawq_utils_resnet50.load_qconfig_from_bit_config(stage, units, bit_config.bit_config_dict[args.bit_config], bottleneck)
 else:
     if model_type == 'int4':
@@ -183,7 +184,8 @@ else:
 # -----------------
 tuning_enable = args.tuning_enable
 # log_filename = "./mixed_precision_models/tuning_logs/resnet%d_%s_%s_batch_%d.log" % (num_layers, data_layout, model_type, batch_size)
-log_filename = "./mixed_precision_models/tuning_logs/resnet%d_%s_mixed_batch_%d.log" % (num_layers, data_layout, batch_size)
+model_dirname = bit_config_string.replace("bit_config_","").replace("modelsize","size").replace("_0","0") if args.bit_config is not None else "default"
+log_filename = f"./models/{model_dirname}/resnet{num_layers}_{data_layout}_mixed_batch_{batch_size}.log"
 tmp_log_file = log_filename + '.temp'
 
 if tuning_enable:
