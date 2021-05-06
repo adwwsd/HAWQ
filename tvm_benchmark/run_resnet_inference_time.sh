@@ -8,9 +8,9 @@ run_inference() {
 	printf "%s\n" $bit_config
 
         # If you'd like only to measure inference time without autoTVM support, run:
-	# python test_resnet_inference_time.py --bit-config $bit_config --num-layers $num_layers 
+	#python test_resnet_inference_time.py --bit-config $bit_config --num-layers $num_layers --data-layout NHWC
         # Otherwise, to optmize model with autoTVM and to log the results, run:
-	python test_resnet_inference_time.py --bit-config $bit_config --num-layers $num_layers --tuning-enable --data-layout NHWC
+	python test_resnet_inference_time.py --bit-config $bit_config --num-layers $num_layers --tuning-enable --tuning-trials 200 --data-layout NHWC 
 
 	cp ./debug_output/resnet_generated.cu ./debug_output/resnet_manual.cu
 

@@ -9,8 +9,11 @@ from torch.autograd import Variable
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
-
 import argparse
+
+import torch.cuda.profiler as profiler
+import pyprof
+pyprof.init()
 
 parser = argparse.ArgumentParser(description='Mixed precision resnet example',
                                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -80,20 +83,28 @@ total_time=0
 for _ in range(50):
     _ = resnet50(dummy_input)
 
+iter_to_capture = 50
 with torch.no_grad():
-    for rep in range(repetitions):
-        starter,ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-        starter.record()
-        _ = resnet50(dummy_input)
-        ender.record()
-        torch.cuda.synchronize()
-        curr_time = starter.elapsed_time(ender)/1000
-        total_time += curr_time
+    with torch.autograd.profiler.emit_nvtx():
+        for rep in range(repetitions):
+            starter,ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+            if rep == iter_to_capture:
+                profiler.start();
+            starter.record()
+            _ = resnet50(dummy_input)
+            ender.record()
+            if rep == iter_to_capture:
+                profiler.stop();
+            torch.cuda.synchronize()
+            curr_time = starter.elapsed_time(ender)/1000
+            total_time += curr_time
+
 time_average = total_time/(repetitions*batch_size)
 
 print(f"resnet50 time_average:{time_average* 1000}ms")
 
 
+'''
 
 ###############################################################################
 # Prepare validation data
@@ -154,3 +165,4 @@ with torch.no_grad():
             _, top5 = acc_top5.get()
             nsamples = (i + 1) * batch_size
             print("resnet50 - [%d samples] validation: acc-top1=%f acc-top5=%f" % (nsamples, top1, top5))
+'''

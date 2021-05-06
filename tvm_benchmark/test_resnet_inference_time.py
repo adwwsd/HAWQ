@@ -198,7 +198,7 @@ if tuning_enable:
 
     measure_option = autotvm.measure_option(
         builder='local',
-        runner=autotvm.LocalRunner(number=20, repeat=3, min_repeat_ms=150)
+        runner=autotvm.LocalRunner(number=200, repeat=3, min_repeat_ms=150)
         # runner=autotvm.RPCRunner(
         #    'T4',  # change the device key to your key
         #    '0.0.0.0', 9190,
