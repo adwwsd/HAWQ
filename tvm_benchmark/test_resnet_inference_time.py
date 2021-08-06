@@ -18,6 +18,11 @@ import numpy as np
 import logging
 logging.basicConfig(level=logging.WARNING)
 
+import torch
+import torch.cuda.profiler as profiler
+#import pyprof
+#pyprof.init()
+
 import argparse
 
 parser = argparse.ArgumentParser(description='Mixed precision resnet example',
@@ -47,7 +52,7 @@ parser.add_argument('--data-layout', default='HWNC',
 parser.add_argument('--kernel-layout', default='HWOI',
                     help='Kernel layout (OIHW, HWOI)')
 
-parser.add_argument('--tuning-trials', type=int, default=50,
+parser.add_argument('--tuning-trials', type=int, default=4000,
                     help='The length of tuining for each operation')
 
 parser.add_argument('--with-bn', action='store_true', default=False,
@@ -183,10 +188,14 @@ else:
 # Tuning
 # -----------------
 tuning_enable = args.tuning_enable
-# log_filename = "./mixed_precision_models/tuning_logs/resnet%d_%s_%s_batch_%d.log" % (num_layers, data_layout, model_type, batch_size)
-model_dirname = bit_config_string.replace("bit_config_","").replace("modelsize","size").replace("_0","0") if args.bit_config is not None else "default"
-log_filename = f"./models/{model_dirname}/resnet{num_layers}_{data_layout}_mixed_batch_{batch_size}.log"
+#log_filename = "./mixed_precision_models/tuning_logs/resnet%d_%s_%s_batch_%d.log" % (num_layers, data_layout, model_type, batch_size)
+log_filename = "./mixed_precision_models/tuning_logs/resnet%d_%s_mixed_batch_%d.log" % (num_layers, data_layout, batch_size)
+if args.bit_config is not None:
+    model_dirname = bit_config_string.replace("bit_config_","").replace("modelsize","size").replace("_0","0") if args.bit_config is not None else "default"
+    log_filename = f"./models/{model_dirname}/resnet{num_layers}_{data_layout}_mixed_batch_{batch_size}.log"
+
 tmp_log_file = log_filename + '.temp'
+print(log_filename)
 
 if tuning_enable:
     print("Extracting tasks ...")
@@ -198,7 +207,7 @@ if tuning_enable:
 
     measure_option = autotvm.measure_option(
         builder='local',
-        runner=autotvm.LocalRunner(number=200, repeat=3, min_repeat_ms=150)
+        runner=autotvm.LocalRunner(number=40, repeat=3, min_repeat_ms=150)
         # runner=autotvm.RPCRunner(
         #    'T4',  # change the device key to your key
         #    '0.0.0.0', 9190,
@@ -211,6 +220,7 @@ if tuning_enable:
         tuner = autotvm.tuner.XGBTuner(task, feature_type='knob')
         num_trial = min(args.tuning_trials, len(task.config_space))
         tuner.tune(n_trial=num_trial,
+                    early_stopping=1000,
                    measure_option=measure_option,
                    callbacks=[autotvm.callback.progress_bar(num_trial, prefix=prefix),
                               autotvm.callback.log_to_file(tmp_log_file)])
@@ -260,6 +270,14 @@ with autotvm.apply_history_best(log_filename):
             for i in range(0, 100):
                 module.run()
                 module.get_output(0).asnumpy()
+            print("warmup done")
+
+            # profile
+            with torch.autograd.profiler.emit_nvtx():
+                profiler.start()
+                module.run()
+                profiler.stop()
+
 
             num = 50  # number of times we run module for a single measurement
             rep = 30  # number of measurements (we derive std dev from this)

@@ -158,6 +158,7 @@ def load_qconfig_from_bit_config(num_stages, units, bit_config, bottleneck):
         assert bit_width == 4 or bit_width == 8, "Bit width %d not supported" % bit_width
         if bit_width == 4:
             data_dtype = "uint4"
+            #data_dtype = "int4"
             kernel_dtype = "int4"
         elif bit_width == 8:
             data_dtype = "int8"

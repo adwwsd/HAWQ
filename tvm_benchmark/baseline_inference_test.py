@@ -11,9 +11,9 @@ import torchvision.datasets as datasets
 
 import argparse
 
-import torch.cuda.profiler as profiler
-import pyprof
-pyprof.init()
+#import torch.cuda.profiler as profiler
+#import pyprof
+#pyprof.init()
 
 parser = argparse.ArgumentParser(description='Mixed precision resnet example',
                                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -43,22 +43,22 @@ args = parser.parse_args()
 resnet18 = ptcv_get_model("resnet18", pretrained=True)
 resnet50 = ptcv_get_model("resnet50", pretrained=True)
 
-resnet18_params = torch.load("models/resnet18_baseline/resnet18.pth")
-resnet50_params = torch.load("models/resnet50_baseline/resnet50.pth")
+#resnet18_params = torch.load("models/resnet18_baseline/resnet18.pth")
+#resnet50_params = torch.load("models/resnet50_baseline/resnet50.pth")
 
 device = torch.device("cuda")
-resnet18.load_state_dict(resnet18_params)
-resnet50.load_state_dict(resnet50_params)
+#resnet18.load_state_dict(resnet18_params)
+#resnet50.load_state_dict(resnet50_params)
 resnet18.to(device)
 resnet50.to(device)
 
-batch_size = 8
+batch_size = args.batch_size
 
 ###############################################################################
 # Inference time measure
 # -----------------
 ### ResNet18 Infernce Time Check
-repetitions=100
+repetitions=2000
 dummy_input = torch.randn(batch_size,3,224,224,dtype=torch.float).to(device)
 total_time=0
 for _ in range(50):
@@ -78,26 +78,26 @@ time_average = total_time/(repetitions*batch_size)
 print(f"resnet18 time_average:{time_average* 1000}ms")
 
 ### ResNet50 Infernce Time Check
-repetitions=100
+repetitions=2000
 total_time=0
 for _ in range(50):
     _ = resnet50(dummy_input)
 
 iter_to_capture = 50
 with torch.no_grad():
-    with torch.autograd.profiler.emit_nvtx():
-        for rep in range(repetitions):
-            starter,ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-            if rep == iter_to_capture:
-                profiler.start();
-            starter.record()
-            _ = resnet50(dummy_input)
-            ender.record()
-            if rep == iter_to_capture:
-                profiler.stop();
-            torch.cuda.synchronize()
-            curr_time = starter.elapsed_time(ender)/1000
-            total_time += curr_time
+    #with torch.autograd.profiler.emit_nvtx():
+    for rep in range(repetitions):
+        starter,ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+        #if rep == iter_to_capture:
+            #profiler.start();
+        starter.record()
+        _ = resnet50(dummy_input)
+        ender.record()
+        #if rep == iter_to_capture:
+            #profiler.stop();
+        torch.cuda.synchronize()
+        curr_time = starter.elapsed_time(ender)/1000
+        total_time += curr_time
 
 time_average = total_time/(repetitions*batch_size)
 

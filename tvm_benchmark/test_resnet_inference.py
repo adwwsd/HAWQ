@@ -22,6 +22,10 @@ from mixed_precision_models.layers import QConfig, QuantizeContext
 
 import hawq_utils_resnet
 
+import torch.cuda.profiler as profiler
+import pyprof
+pyprof.init()
+
 import logging
 logging.basicConfig(level=logging.CRITICAL)
 
@@ -136,6 +140,7 @@ else:
 with autotvm.apply_history_best(log_filename):
     with relay.build_config(opt_level=3):
 
+        print("building relay")
         graph, lib, params = relay.build(func, target=TARGET_NAME, params=params)
 
         if args.debug_unit is not None:
