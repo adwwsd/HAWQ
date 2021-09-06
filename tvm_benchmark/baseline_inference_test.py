@@ -11,7 +11,7 @@ import torchvision.datasets as datasets
 
 import argparse
 
-#import torch.cuda.profiler as profiler
+import torch.cuda.profiler as profiler
 #import pyprof
 #pyprof.init()
 
@@ -85,19 +85,19 @@ for _ in range(50):
 
 iter_to_capture = 50
 with torch.no_grad():
-    #with torch.autograd.profiler.emit_nvtx():
-    for rep in range(repetitions):
-        starter,ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-        #if rep == iter_to_capture:
-            #profiler.start();
-        starter.record()
-        _ = resnet50(dummy_input)
-        ender.record()
-        #if rep == iter_to_capture:
-            #profiler.stop();
-        torch.cuda.synchronize()
-        curr_time = starter.elapsed_time(ender)/1000
-        total_time += curr_time
+    with torch.autograd.profiler.emit_nvtx():
+        for rep in range(repetitions):
+            starter,ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+            if rep == iter_to_capture:
+                profiler.start();
+            starter.record()
+            _ = resnet50(dummy_input)
+            ender.record()
+            if rep == iter_to_capture:
+                profiler.stop();
+            torch.cuda.synchronize()
+            curr_time = starter.elapsed_time(ender)/1000
+            total_time += curr_time
 
 time_average = total_time/(repetitions*batch_size)
 

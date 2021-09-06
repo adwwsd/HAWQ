@@ -183,6 +183,8 @@ else:
                                                     with_softmax=args.with_softmax,
                                                     debug_unit=args.debug_unit)
 
+print(f"version:{args.version}, with_bn:{args.with_bn}")
+
 # print(func.astext())
 ###############################################################################
 # Tuning
