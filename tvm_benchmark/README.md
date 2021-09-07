@@ -20,7 +20,7 @@ A lot of these steps are taken from the TVM [Install from Source](https://tvm.ap
 
 Clone and checkout the specific branch in the following repo.
 
-    git clone --recursive --branch int4_direct_HWNC http://github.com/zachzzc/incubator-tvm.git ~/tvm
+    git clone --recursive --branch int4_direct_HWNC https://github.com/notaxaiha/incubator-tvm.git ~/tvm
 
 Install LLVM.
 
